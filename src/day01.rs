@@ -3,8 +3,7 @@ use std::num::ParseIntError;
 
 #[inline]
 fn parse_into_nums<'s>(input: &'s str) -> impl Iterator<Item = Result<u64, ParseIntError>> + 's {
-    input.lines()
-        .map(|line| line.parse())
+    input.lines().map(|line| line.parse())
 }
 
 #[inline]
@@ -27,9 +26,7 @@ fn calculate_total_fuel_load_for_fuel(mut fuel_weight: u64) -> u64 {
 
 #[aoc(day01, part1)]
 fn part1(input: &str) -> Result<u64, ParseIntError> {
-    parse_into_nums(input)
-        .map_ok(calculate_fuel_load)
-        .sum()
+    parse_into_nums(input).map_ok(calculate_fuel_load).sum()
 }
 
 #[aoc(day01, part2)]
