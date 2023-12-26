@@ -2,7 +2,10 @@ use std::str::FromStr;
 
 use num::{Integer, ToPrimitive};
 
-use crate::{error, memory::Memory};
+use crate::{
+    error::{self, VMError},
+    memory::Memory,
+};
 
 /// A [VM](IntcodeVM) will return a variant of this enum when it encounters some instructions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,6 +88,7 @@ where
 
                     let result = arg1_val.clone() + arg2_val.clone();
                     self.memory.set(destination_addr, result);
+                    self.increment_instr_ptr_by(instruction_width);
                 }
 
                 instr::Instruction::Mul(arg1, arg2, dest) => {
@@ -94,12 +98,14 @@ where
 
                     let result = arg1_val.clone() * arg2_val.clone();
                     self.memory.set(destination_addr, result);
+                    self.increment_instr_ptr_by(instruction_width);
                 }
 
                 instr::Instruction::ReadInput(dest) => {
                     let destination_addr = dest.resolve_address(self)?;
                     if let Some(input) = self.next_input_value.take() {
                         self.memory.set(destination_addr, input);
+                        self.increment_instr_ptr_by(instruction_width);
                     } else {
                         return Ok(VMResult::WaitingForInput);
                     }
@@ -111,10 +117,60 @@ where
                     return Ok(VMResult::Output(res));
                 }
 
+                instr::Instruction::JmpIfTrue(arg, target) => {
+                    if !arg.resolve_value(self)?.is_zero() {
+                        let target_value = target.resolve_value(self)?;
+                        let new_instr_ptr = target_value
+                            .to_usize()
+                            .ok_or_else(|| VMError::CannotCastToUsize(target_value.clone()))?;
+
+                        self.instruction_ptr = new_instr_ptr;
+                    } else {
+                        self.increment_instr_ptr_by(instruction_width);
+                    }
+                }
+
+                instr::Instruction::JmpIfFalse(arg, target) => {
+                    if arg.resolve_value(self)?.is_zero() {
+                        let target_value = target.resolve_value(self)?;
+                        let new_instr_ptr = target_value
+                            .to_usize()
+                            .ok_or_else(|| VMError::CannotCastToUsize(target_value.clone()))?;
+
+                        self.instruction_ptr = new_instr_ptr;
+                    } else {
+                        self.increment_instr_ptr_by(instruction_width);
+                    }
+                }
+
+                instr::Instruction::LessThan(arg1, arg2, result) => {
+                    let arg1_val = arg1.resolve_value(self)?;
+                    let arg2_val = arg2.resolve_value(self)?;
+                    let dest = result.resolve_address(self)?;
+                    if arg1_val < arg2_val {
+                        self.memory.set(dest, T::one());
+                    } else {
+                        self.memory.set(dest, T::zero());
+                    }
+
+                    self.increment_instr_ptr_by(instruction_width);
+                }
+
+                instr::Instruction::Equals(arg1, arg2, result) => {
+                    let arg1_val = arg1.resolve_value(self)?;
+                    let arg2_val = arg2.resolve_value(self)?;
+                    let dest = result.resolve_address(self)?;
+                    if arg1_val == arg2_val {
+                        self.memory.set(dest, T::one());
+                    } else {
+                        self.memory.set(dest, T::zero());
+                    }
+
+                    self.increment_instr_ptr_by(instruction_width);
+                }
+
                 instr::Instruction::Halt => return Ok(VMResult::Halted),
             }
-
-            self.increment_instr_ptr_by(instruction_width);
         }
     }
 
@@ -161,6 +217,11 @@ where
             self.get_at_instr_ptr(2),
             self.get_at_instr_ptr(3),
         )
+    }
+
+    #[inline]
+    fn get_2_after_intr_ptr(&self) -> (&T, &T) {
+        (self.get_at_instr_ptr(1), self.get_at_instr_ptr(2))
     }
 }
 
@@ -269,6 +330,10 @@ mod instr {
         Mul(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
         ReadInput(ArgInfo<'t, T>),
         WriteOutput(ArgInfo<'t, T>),
+        JmpIfTrue(ArgInfo<'t, T>, ArgInfo<'t, T>),
+        JmpIfFalse(ArgInfo<'t, T>, ArgInfo<'t, T>),
+        LessThan(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
+        Equals(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
         Halt,
     }
 
@@ -289,6 +354,10 @@ mod instr {
                 2 => Self::create_mul(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 3 => Self::create_read_input(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 4 => Self::create_write_output(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                5 => Self::create_jmp_if_true(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                6 => Self::create_jmp_if_false(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                7 => Self::create_less_than(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                8 => Self::create_equals(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 99 => Ok(Self::Halt),
                 other => Err(VMError::UnknownInstruction(other)),
             }
@@ -301,6 +370,10 @@ mod instr {
                 Self::Mul(_, _, _) => 4,
                 Self::ReadInput(_) => 2,
                 Self::WriteOutput(_) => 2,
+                Self::JmpIfTrue(_, _) => 3,
+                Self::JmpIfFalse(_, _) => 3,
+                Self::LessThan(_, _, _) => 4,
+                Self::Equals(_, _, _) => 4,
                 Self::Halt => 1,
             }
         }
@@ -359,6 +432,68 @@ mod instr {
         ) -> error::Result<Self, T> {
             let arg = vm.get_at_instr_ptr(1);
             Ok(Self::WriteOutput((opcode, arg, arg1_mode, 1).into()))
+        }
+
+        #[inline]
+        fn create_jmp_if_true(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            _arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
+            let (arg1, target) = vm.get_2_after_intr_ptr();
+            Ok(Self::JmpIfTrue(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, target, arg2_mode, 2).into(),
+            ))
+        }
+
+        #[inline]
+        fn create_jmp_if_false(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            _arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
+            let (arg1, target) = vm.get_2_after_intr_ptr();
+            Ok(Self::JmpIfFalse(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, target, arg2_mode, 2).into(),
+            ))
+        }
+
+        #[inline]
+        fn create_less_than(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
+            let (arg1, arg2, dest) = vm.get_3_after_intr_ptr();
+            Ok(Self::LessThan(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, arg2, arg2_mode, 2).into(),
+                (opcode, dest, arg3_mode, 3).into(),
+            ))
+        }
+
+        #[inline]
+        fn create_equals(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
+            let (arg1, arg2, dest) = vm.get_3_after_intr_ptr();
+            Ok(Self::Equals(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, arg2, arg2_mode, 2).into(),
+                (opcode, dest, arg3_mode, 3).into(),
+            ))
         }
 
         #[inline]

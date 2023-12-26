@@ -27,3 +27,18 @@ fn part1(input: &str) -> Result<i64, Box<dyn Error>> {
         }
     }
 }
+
+#[aoc(day05, part2)]
+fn part2(input: &str) -> Result<i64, Box<dyn Error>> {
+    let mut vm: IntcodeVM<_> = input.parse()?;
+    vm.set_next_input(5);
+
+    let result = match vm.run()? {
+        VMResult::Output(out) => out,
+        VMResult::WaitingForInput => Err("VM asked for input beyond the `5` already provided")?,
+        VMResult::Halted => Err("VM halted without producing any values")?,
+    };
+
+    assert_eq!(vm.run()?, VMResult::Halted);
+    Ok(result)
+}

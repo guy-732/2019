@@ -96,4 +96,11 @@ mod tests {
         assert_eq!(vm.run().unwrap(), VMResult::Halted);
         assert!(vm.into_memory().memory_starts_with(&[1002, 4, 3, 4, 99]));
     }
+
+    #[test]
+    fn test_negative_add() {
+        let mut vm = IntcodeVM::from([1101, 100, -1, 4, 0]);
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+        assert!(vm.into_memory().memory_starts_with(&[1101, 100, -1, 4, 99]));
+    }
 }
