@@ -68,4 +68,32 @@ mod tests {
             .into_memory()
             .memory_starts_with(&[30, 1, 1, 4, 2, 5, 6, 0, 99]));
     }
+
+    #[test]
+    fn test_io() {
+        let mut vm = IntcodeVM::from([3, 0, 4, 0, 99]);
+        assert_eq!(vm.run().unwrap(), VMResult::WaitingForInput);
+        assert_eq!(vm.set_next_input(12345), None);
+        assert_eq!(vm.run().unwrap(), VMResult::Output(12345));
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+        assert!(vm.into_memory().memory_starts_with(&[12345, 0, 4, 0, 99]));
+    }
+
+    #[test]
+    fn test_io_immediate() {
+        let mut vm = IntcodeVM::from([3, 3, 104, 0, 99]);
+        assert_eq!(vm.run().unwrap(), VMResult::WaitingForInput);
+        assert_eq!(vm.set_next_input(12345), None);
+        assert_eq!(vm.run().unwrap(), VMResult::Output(12345));
+        assert_eq!(vm.get_next_input(), &None);
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+        assert!(vm.into_memory().memory_starts_with(&[3, 3, 104, 12345, 99]));
+    }
+
+    #[test]
+    fn test_immediate_mul_into_halt() {
+        let mut vm = IntcodeVM::from([1002, 4, 3, 4, 33]);
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+        assert!(vm.into_memory().memory_starts_with(&[1002, 4, 3, 4, 99]));
+    }
 }
