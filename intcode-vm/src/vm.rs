@@ -66,7 +66,7 @@ where
     /// assert_eq!(vm.run().unwrap(), VMResult::Halted);
     /// ```
     ///
-    /// Will return a [VMError] if a problem occurred, such as an unrecognized op code
+    /// Will return a [VMError](error::VMError) if a problem occurred, such as an unrecognized op code
     /// ```
     /// # use intcode_vm::IntcodeVM;
     /// let mut vm = IntcodeVM::new([15]); // 15 is not a valid op code
