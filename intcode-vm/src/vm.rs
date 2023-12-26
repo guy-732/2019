@@ -2,17 +2,14 @@ use std::str::FromStr;
 
 use num::{Integer, ToPrimitive};
 
-use crate::{
-    error::{self, VMError},
-    memory::Memory,
-};
+use crate::{error, memory::Memory};
 
 /// A [VM](IntcodeVM) will return a variant of this enum when it encounters some instructions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VMResult<'vm, T> {
     /// Encountered opcode: 99
     ///
-    /// Calling [`vm.run()`](IntcodeVM::run) again would simple halt immediatly again
+    /// Calling [`vm.run()`](IntcodeVM::run) again would simply halt immediatly again
     Halted,
     /// Encountered opcode: 03
     ///
@@ -82,33 +79,17 @@ where
             let instruction_width = instruction.instruction_width();
             match instruction {
                 instr::Instruction::Add(arg1, arg2, dest) => {
-                    let arg1_val = self.memory.get(
-                        arg1.to_usize()
-                            .ok_or_else(|| VMError::CannotCastToUsize(arg1.clone()))?,
-                    );
-                    let arg2_val = self.memory.get(
-                        arg2.to_usize()
-                            .ok_or_else(|| VMError::CannotCastToUsize(arg2.clone()))?,
-                    );
-                    let destination_addr = dest
-                        .to_usize()
-                        .ok_or_else(|| VMError::CannotCastToUsize(dest.clone()))?;
+                    let arg1_val = arg1.resolve_value(self)?;
+                    let arg2_val = arg2.resolve_value(self)?;
+                    let destination_addr = dest.resolve_address(self)?;
 
                     let result = arg1_val.clone() + arg2_val.clone();
                     self.memory.set(destination_addr, result);
                 }
                 instr::Instruction::Mul(arg1, arg2, dest) => {
-                    let arg1_val = self.memory.get(
-                        arg1.to_usize()
-                            .ok_or_else(|| VMError::CannotCastToUsize(arg1.clone()))?,
-                    );
-                    let arg2_val = self.memory.get(
-                        arg2.to_usize()
-                            .ok_or_else(|| VMError::CannotCastToUsize(arg2.clone()))?,
-                    );
-                    let destination_addr = dest
-                        .to_usize()
-                        .ok_or_else(|| VMError::CannotCastToUsize(dest.clone()))?;
+                    let arg1_val = arg1.resolve_value(self)?;
+                    let arg2_val = arg2.resolve_value(self)?;
+                    let destination_addr = dest.resolve_address(self)?;
 
                     let result = arg1_val.clone() * arg2_val.clone();
                     self.memory.set(destination_addr, result);
@@ -208,30 +189,91 @@ mod instr {
         IntcodeVM,
     };
 
+    #[derive(Debug, Clone, Copy)]
+    enum ArgMode {
+        Positional,
+        Immediate,
+    }
+
+    #[derive(Debug, Clone)]
+    pub(super) struct ArgInfo<'t, T> {
+        opcode: u16,
+        arg_num: u8,
+        mode: ArgMode,
+        value: &'t T,
+    }
+
+    impl<'vm, T> ArgInfo<'vm, T>
+    where
+        T: Integer + Clone + ToPrimitive,
+    {
+        #[inline]
+        pub(super) fn resolve_value(&self, vm: &'vm IntcodeVM<T>) -> error::Result<&'vm T, T> {
+            match self.mode {
+                ArgMode::Immediate => Ok(self.value),
+                ArgMode::Positional => Ok(vm.memory.get(
+                    self.value
+                        .to_usize()
+                        .ok_or_else(|| VMError::CannotCastToUsize(self.value.clone()))?,
+                )),
+            }
+        }
+
+        #[inline]
+        pub(super) fn resolve_address(&self, _vm: &'vm IntcodeVM<T>) -> error::Result<usize, T> {
+            match self.mode {
+                ArgMode::Immediate => Err(VMError::ArgModeCannotBeImmediate {
+                    opcode: self.opcode,
+                    arg_num: self.arg_num,
+                }),
+                ArgMode::Positional => self
+                    .value
+                    .to_usize()
+                    .ok_or_else(|| VMError::CannotCastToUsize(self.value.clone())),
+            }
+        }
+    }
+
+    impl<'t, T> From<(u16, &'t T, ArgMode, u8)> for ArgInfo<'t, T> {
+        #[inline]
+        fn from(value: (u16, &'t T, ArgMode, u8)) -> Self {
+            Self {
+                opcode: value.0,
+                arg_num: value.3,
+                mode: value.2,
+                value: value.1,
+            }
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub(super) enum Instruction<'t, T> {
-        Add(&'t T, &'t T, &'t T),
-        Mul(&'t T, &'t T, &'t T),
+        Add(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
+        Mul(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
         Halt,
     }
 
     impl<'t, T> Instruction<'t, T>
     where
-        T: Integer + Clone + ToPrimitive,
+        T: Integer + Clone + ToPrimitive + 't,
     {
+        #[inline]
         pub(super) fn from_current_instr_ptr(vm: &'t IntcodeVM<T>) -> error::Result<Self, T> {
             let instr = vm.get_at_instr_ptr(0);
-            match instr
+            let op = instr
                 .to_u16()
-                .ok_or_else(|| VMError::CannotCastToU16(instr.clone()))?
-            {
-                1 => Self::create_add(vm),
-                2 => Self::create_mul(vm),
+                .ok_or_else(|| VMError::CannotCastToU16(instr.clone()))?;
+
+            let (arg1_mode, arg2_mode, arg3_mode) = Self::get_3_arg_modes(op)?;
+            match op % 100 {
+                1 => Self::create_add(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                2 => Self::create_mul(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 99 => Ok(Self::Halt),
                 other => Err(VMError::UnknownInstruction(other)),
             }
         }
 
+        #[inline]
         pub(super) const fn instruction_width(&self) -> usize {
             match self {
                 Self::Add(_, _, _) => 4,
@@ -240,14 +282,64 @@ mod instr {
             }
         }
 
-        fn create_add(vm: &'t IntcodeVM<T>) -> error::Result<Self, T> {
+        #[inline]
+        fn create_add(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
             let (arg1, arg2, dest) = vm.get_3_after_intr_ptr();
-            Ok(Self::Add(arg1, arg2, dest))
+            Ok(Self::Add(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, arg2, arg2_mode, 2).into(),
+                (opcode, dest, arg3_mode, 3).into(),
+            ))
         }
 
-        fn create_mul(vm: &'t IntcodeVM<T>) -> error::Result<Self, T> {
+        #[inline]
+        fn create_mul(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            arg2_mode: ArgMode,
+            arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
             let (arg1, arg2, dest) = vm.get_3_after_intr_ptr();
-            Ok(Self::Mul(arg1, arg2, dest))
+            Ok(Self::Mul(
+                (opcode, arg1, arg1_mode, 1).into(),
+                (opcode, arg2, arg2_mode, 2).into(),
+                (opcode, dest, arg3_mode, 3).into(),
+            ))
+        }
+
+        #[inline]
+        fn get_3_arg_modes(opcode: u16) -> Result<(ArgMode, ArgMode, ArgMode), VMError<T>> {
+            let mut op = opcode / 100;
+            let arg1 = (op % 10) as u8;
+            op /= 10;
+            let arg2 = (op % 10) as u8;
+            op /= 10;
+            let arg3 = op as u8;
+            Ok((
+                Self::parse_arg_mode(opcode, arg1, 1)?,
+                Self::parse_arg_mode(opcode, arg2, 2)?,
+                Self::parse_arg_mode(opcode, arg3, 3)?,
+            ))
+        }
+
+        #[inline]
+        fn parse_arg_mode(opcode: u16, arg_mode: u8, arg_num: u8) -> error::Result<ArgMode, T> {
+            match arg_mode {
+                0 => Ok(ArgMode::Positional),
+                1 => Ok(ArgMode::Immediate),
+                _ => Err(VMError::InvalidArgMode {
+                    opcode,
+                    arg_num,
+                    arg_mode,
+                }),
+            }
         }
     }
 }

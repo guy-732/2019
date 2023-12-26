@@ -15,6 +15,18 @@ where
 
     #[error("Could not cast {0} to usize")]
     CannotCastToUsize(T),
+
+    #[error("The argument mode in opcode {opcode} for argument n°{arg_num} is not recognized (was {arg_mode}, should be 0 or 1)")]
+    InvalidArgMode {
+        opcode: u16,
+        arg_num: u8,
+        arg_mode: u8,
+    },
+
+    #[error(
+        "The argument mode in opcode {opcode} for argument n°{arg_num} cannot be immediate (1)"
+    )]
+    ArgModeCannotBeImmediate { opcode: u16, arg_num: u8 },
 }
 
 pub type Result<T, I> = std::result::Result<T, VMError<I>>;
