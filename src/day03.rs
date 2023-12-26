@@ -111,21 +111,19 @@ impl Segment {
             } else {
                 None
             }
+        } else if other.is_horizontal() {
+            None
+        } else if self.min_x() <= other.any_x()
+            && other.any_x() <= self.max_x()
+            && other.min_y() <= self.any_y()
+            && self.any_y() <= other.max_y()
+        {
+            Some(Point {
+                x: other.any_x(),
+                y: self.any_y(),
+            })
         } else {
-            if other.is_horizontal() {
-                None
-            } else if self.min_x() <= other.any_x()
-                && other.any_x() <= self.max_x()
-                && other.min_y() <= self.any_y()
-                && self.any_y() <= other.max_y()
-            {
-                Some(Point {
-                    x: other.any_x(),
-                    y: self.any_y(),
-                })
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -145,7 +143,7 @@ impl From<(Point, Point)> for Segment {
 
 #[aoc_generator(day03)]
 fn parse(input: &str) -> Result<(Vec<Segment>, Vec<Segment>), &'static str> {
-    Ok(input
+    input
         .lines()
         .map(|line| {
             let mut result = vec![];
@@ -183,7 +181,7 @@ fn parse(input: &str) -> Result<(Vec<Segment>, Vec<Segment>), &'static str> {
             result
         })
         .collect_tuple()
-        .ok_or("Only 2 lines expected, found at least 3")?)
+        .ok_or("Only 2 lines expected, found at least 3")
 }
 
 #[aoc(day03, part1)]

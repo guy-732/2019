@@ -2,13 +2,13 @@ use itertools::Itertools;
 use std::num::ParseIntError;
 
 #[inline]
-fn parse_into_nums<'s>(input: &'s str) -> impl Iterator<Item = Result<u64, ParseIntError>> + 's {
+fn parse_into_nums(input: &str) -> impl Iterator<Item = Result<u64, ParseIntError>> + '_ {
     input.lines().map(|line| line.parse())
 }
 
 #[inline]
 fn calculate_fuel_load(weight: u64) -> u64 {
-    (weight / 3).checked_sub(2).unwrap_or(0)
+    (weight / 3).saturating_sub(2)
 }
 
 #[inline]
