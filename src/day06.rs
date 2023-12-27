@@ -85,19 +85,17 @@ fn parse_part2(input: &str) -> Result<Graph, Box<dyn Error>> {
         if let Some(list) = graph.adj_list.get_mut(before) {
             list.insert(after.to_owned());
         } else {
-            graph.adj_list.insert(
-                before.to_owned(),
-                iter::once(after.to_owned()).collect(),
-            );
+            graph
+                .adj_list
+                .insert(before.to_owned(), iter::once(after.to_owned()).collect());
         }
 
         if let Some(list) = graph.adj_list.get_mut(after) {
             list.insert(before.to_owned());
         } else {
-            graph.adj_list.insert(
-                after.to_owned(),
-                iter::once(before.to_owned()).collect()
-            );
+            graph
+                .adj_list
+                .insert(after.to_owned(), iter::once(before.to_owned()).collect());
         }
     }
 
