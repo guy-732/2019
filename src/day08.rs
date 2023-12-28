@@ -89,11 +89,15 @@ impl fmt::Display for Layer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for row in 0..self.get_height() {
             for col in 0..self.get_width() {
-                write!(f, "{}", match self[(row, col)] {
-                    0 => ' ',
-                    1 => '#',
-                    other => (b'0' + other) as char,
-                })?;
+                write!(
+                    f,
+                    "{}",
+                    match self[(row, col)] {
+                        0 => ' ',
+                        1 => '#',
+                        other => (b'0' + other) as char,
+                    }
+                )?;
             }
 
             writeln!(f)?;
@@ -142,7 +146,8 @@ fn part2(layers: &[Layer]) -> String {
     let mut final_layer = Layer::from_iterator(&mut iter::repeat(b'0'), width, height).unwrap();
     for row in 0..height {
         for col in 0..width {
-            let target = layers.iter()
+            let target = layers
+                .iter()
                 .find_map(|layer| {
                     let color = layer[(row, col)];
                     (color != 2).then_some(color)
