@@ -105,7 +105,7 @@ impl fmt::Display for Layer {
 
 #[inline]
 fn parse_with(input: &[u8], width: usize, height: usize) -> Vec<Layer> {
-    let mut iter = input.into_iter().copied();
+    let mut iter = input.iter().copied();
     let mut result = vec![];
     while let Some(layer) = Layer::from_iterator(&mut iter, width, height) {
         result.push(layer);

@@ -33,7 +33,7 @@ impl Graph {
             }
 
             for key in &self.adj_list[key] {
-                if visited.insert(&key) {
+                if visited.insert(key) {
                     queue.push_back((&key, depth + 1));
                 }
             }

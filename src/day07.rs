@@ -13,10 +13,9 @@ fn part1(program: &[i64]) -> Result<i64, Box<dyn Error>> {
     (0..=4)
         .permutations(5)
         .map(|settings| {
-            let mut settings = settings.into_iter();
             let mut current_trust = 0;
-            while let Some(phase) = settings.next() {
-                let mut vm = IntcodeVM::from(program.into_iter().copied());
+            for phase in settings {
+                let mut vm = IntcodeVM::from(program.iter().copied());
                 vm.set_next_input(phase);
 
                 match vm.run()? {
@@ -49,7 +48,7 @@ fn part2(program: &[i64]) -> Result<i64, Box<dyn Error>> {
             let mut vms = settings
                 .into_iter()
                 .map(|phase| {
-                    let mut vm = IntcodeVM::from(program.into_iter().copied());
+                    let mut vm = IntcodeVM::from(program.iter().copied());
                     vm.set_next_input(phase);
                     vm
                 })
