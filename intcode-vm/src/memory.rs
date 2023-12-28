@@ -19,6 +19,7 @@ pub struct Memory<T>
 where
     T: Integer + Clone + ToPrimitive,
 {
+    zero: T,
     mem: Vec<T>,
 }
 
@@ -51,17 +52,16 @@ where
     /// assert_eq!(memory.get(4), &99);
     /// ```
     ///
-    /// # Panics
-    /// if the memory address does not exist
-    /// ```rust,should_panic
+    /// if the memory address does not exist, will be 0
+    /// ```
     /// # use intcode_vm::memory::Memory;
     /// let memory = Memory::from([1, 0, 0, 3, 99]);
     ///
-    /// memory.get(10); // panics
+    /// assert_eq!(memory.get(10), &0);
     /// ```
     #[inline]
     pub fn get(&self, address: usize) -> &T {
-        self.mem.get(address).expect("Out of bound memory access")
+        self.mem.get(address).unwrap_or(&self.zero)
     }
 
     /// Replaces the value at `address` with `value`
@@ -81,20 +81,24 @@ where
     /// assert_eq!(memory[4], 99);
     /// ```
     ///
-    /// # Panics
-    /// if the memory address does not exist
-    /// ```rust,should_panic
+    /// if the memory address does not exist, sets it to that value
+    /// ```
     /// # use intcode_vm::memory::Memory;
     /// let mut memory = Memory::from([1, 0, 0, 3, 99]);
     ///
-    /// memory.set(10, 2); // panics
+    /// memory.set(10, 2);
+    ///
+    /// assert_eq!(memory.get(10), &2);
+    /// assert!(memory.memory_starts_with(&[1, 0, 0, 3, 99, 0, 0, 0, 0, 0, 2]));
     /// ```
     #[inline]
     pub fn set(&mut self, address: usize, value: T) {
-        *self
-            .mem
-            .get_mut(address)
-            .expect("Out of bound memory access") = value;
+        if let Some(existing) = self.mem.get_mut(address) {
+            *existing = value;
+        } else {
+            self.mem.resize(address, self.zero.clone());
+            self.mem.push(value);
+        }
     }
 
     /// Creates an [iterator](Iterator) over the memory
@@ -126,10 +130,19 @@ where
     /// # use intcode_vm::memory::Memory;
     /// let memory = Memory::from([1, 0, 0, 3, 99]);
     ///
-    /// assert!(memory.memory_starts_with([1, 0, 0, 3, 99].iter()));
-    /// assert!(memory.memory_starts_with([1, 0, 0].iter())); // shorter than memory, but still valid
-    /// assert!(!memory.memory_starts_with([1, 0, 0, 3, 99, 5].iter())); // longer than memory, not valid
-    /// assert!(!memory.memory_starts_with([1, 0, 0, 0, 99].iter())); // element at index 3 is different
+    /// assert!(memory.memory_starts_with(&[1, 0, 0, 3, 99]));
+    ///
+    /// // shorter than memory, but still valid
+    /// assert!(memory.memory_starts_with(&[1, 0, 0]));
+    ///
+    /// // memory address 5 is zero in memory
+    /// assert!(!memory.memory_starts_with(&[1, 0, 0, 3, 99, 5]));
+    ///
+    /// // element at index 3 is different
+    /// assert!(!memory.memory_starts_with(&[1, 0, 0, 0, 99]));
+    ///
+    /// // elements beyond the program are initialized to 0
+    /// assert!(memory.memory_starts_with(&[1, 0, 0, 3, 99, 0, 0, 0, 0, 0]));
     /// ```
     #[inline]
     pub fn memory_starts_with<'t, I>(&self, iter: I) -> bool
@@ -137,11 +150,11 @@ where
         T: 't,
         I: IntoIterator<Item = &'t T>,
     {
-        let mut self_iter = self.iter();
+        let mut self_iter = self.iter().fuse();
         iter.into_iter().all(|iter_val| {
             self_iter
                 .next()
-                .map_or(false, |self_val| self_val.eq(iter_val))
+                .map_or_else(|| iter_val.is_zero(), |self_val| self_val.eq(iter_val))
         })
     }
 }
@@ -164,6 +177,7 @@ where
 {
     fn from_iter<IT: IntoIterator<Item = T>>(iter: IT) -> Self {
         Self {
+            zero: T::zero(),
             mem: iter.into_iter().collect(),
         }
     }

@@ -103,4 +103,28 @@ mod tests {
         assert_eq!(vm.run().unwrap(), VMResult::Halted);
         assert!(vm.into_memory().memory_starts_with(&[1101, 100, -1, 4, 99]));
     }
+
+    #[test]
+    fn test_copy_of_itself() {
+        let prog = [
+            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
+        ];
+        let mut vm = IntcodeVM::from(prog.iter().copied());
+        for num in prog {
+            assert_eq!(vm.run().unwrap(), VMResult::Output(num));
+        }
+
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+    }
+
+    #[test]
+    fn test_16_digits_output() {
+        let mut vm: IntcodeVM<i64> = [1102, 34915192, 34915192, 7, 4, 7, 99, 0].into();
+        assert_eq!(vm.run().unwrap(), VMResult::Output(34915192 * 34915192));
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+
+        let mut vm: IntcodeVM<i64> = [104, 1125899906842624, 99].into();
+        assert_eq!(vm.run().unwrap(), VMResult::Output(1125899906842624));
+        assert_eq!(vm.run().unwrap(), VMResult::Halted);
+    }
 }

@@ -7,7 +7,7 @@ pub enum VMError<T>
 where
     T: Integer + Clone + ToPrimitive,
 {
-    #[error("The instruction {0} was not any of [01, 02, 03, 04, 99]")]
+    #[error("The instruction {0} was not any of [01, 02, 03, 04, 05, 06, 07, 08, 09, 99]")]
     UnknownInstruction(u16),
 
     #[error("Could not cast {0} to u16 (opcode is cast to u16 before being parsed)")]
@@ -16,7 +16,7 @@ where
     #[error("Could not cast {0} to usize (address is cast to usize before being used)")]
     CannotCastToUsize(T),
 
-    #[error("The argument mode in opcode {opcode} for argument n°{arg_num} is not recognized (was {arg_mode}, should be 0 or 1)")]
+    #[error("The argument mode in opcode {opcode} for argument n°{arg_num} is not recognized (was {arg_mode}, should be 0, 1 or 2)")]
     InvalidArgMode {
         opcode: u16,
         arg_num: u8,

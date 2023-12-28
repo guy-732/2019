@@ -33,6 +33,7 @@ where
 {
     memory: Memory<T>,
     instruction_ptr: usize,
+    relative_base_ptr: T,
     next_input_value: Option<T>,
 }
 
@@ -53,6 +54,7 @@ where
         Self {
             memory: memory.into(),
             instruction_ptr: 0,
+            relative_base_ptr: T::zero(),
             next_input_value: None,
         }
     }
@@ -69,7 +71,7 @@ where
     /// assert_eq!(vm.run().unwrap(), VMResult::Halted);
     /// ```
     ///
-    /// Will return a [VMError](error::VMError) if a problem occurred, such as an unrecognized op code
+    /// Will return a [VMError] if a problem occurred, such as an unrecognized op code
     /// ```
     /// # use intcode_vm::IntcodeVM;
     /// let mut vm = IntcodeVM::new([15]); // 15 is not a valid op code
@@ -165,6 +167,13 @@ where
                     } else {
                         self.memory.set(dest, T::zero());
                     }
+
+                    self.increment_instr_ptr_by(instruction_width);
+                }
+
+                instr::Instruction::AddRelativeBase(arg) => {
+                    let arg_val = arg.resolve_value(self)?;
+                    self.relative_base_ptr = self.relative_base_ptr.clone() + arg_val.clone();
 
                     self.increment_instr_ptr_by(instruction_width);
                 }
@@ -271,6 +280,7 @@ mod instr {
     enum ArgMode {
         Positional,
         Immediate,
+        Relative,
     }
 
     #[derive(Debug, Clone)]
@@ -294,11 +304,19 @@ mod instr {
                         .to_usize()
                         .ok_or_else(|| VMError::CannotCastToUsize(self.value.clone()))?,
                 )),
+                ArgMode::Relative => {
+                    let real_address = self.value.clone() + vm.relative_base_ptr.clone();
+                    Ok(vm.memory.get(
+                        real_address
+                            .to_usize()
+                            .ok_or(VMError::CannotCastToUsize(real_address))?,
+                    ))
+                }
             }
         }
 
         #[inline]
-        pub(super) fn resolve_address(&self, _vm: &'vm IntcodeVM<T>) -> error::Result<usize, T> {
+        pub(super) fn resolve_address(&self, vm: &'vm IntcodeVM<T>) -> error::Result<usize, T> {
             match self.mode {
                 ArgMode::Immediate => Err(VMError::ArgModeCannotBeImmediate {
                     opcode: self.opcode,
@@ -308,6 +326,12 @@ mod instr {
                     .value
                     .to_usize()
                     .ok_or_else(|| VMError::CannotCastToUsize(self.value.clone())),
+                ArgMode::Relative => {
+                    let real_address = self.value.clone() + vm.relative_base_ptr.clone();
+                    real_address
+                        .to_usize()
+                        .ok_or(VMError::CannotCastToUsize(real_address))
+                }
             }
         }
     }
@@ -334,6 +358,7 @@ mod instr {
         JmpIfFalse(ArgInfo<'t, T>, ArgInfo<'t, T>),
         LessThan(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
         Equals(ArgInfo<'t, T>, ArgInfo<'t, T>, ArgInfo<'t, T>),
+        AddRelativeBase(ArgInfo<'t, T>),
         Halt,
     }
 
@@ -358,6 +383,7 @@ mod instr {
                 6 => Self::create_jmp_if_false(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 7 => Self::create_less_than(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 8 => Self::create_equals(vm, arg1_mode, arg2_mode, arg3_mode, op),
+                9 => Self::create_add_relative_base(vm, arg1_mode, arg2_mode, arg3_mode, op),
                 99 => Ok(Self::Halt),
                 other => Err(VMError::UnknownInstruction(other)),
             }
@@ -374,6 +400,7 @@ mod instr {
                 Self::JmpIfFalse(_, _) => 3,
                 Self::LessThan(_, _, _) => 4,
                 Self::Equals(_, _, _) => 4,
+                Self::AddRelativeBase(_) => 2,
                 Self::Halt => 1,
             }
         }
@@ -497,6 +524,18 @@ mod instr {
         }
 
         #[inline]
+        fn create_add_relative_base(
+            vm: &'t IntcodeVM<T>,
+            arg1_mode: ArgMode,
+            _arg2_mode: ArgMode,
+            _arg3_mode: ArgMode,
+            opcode: u16,
+        ) -> error::Result<Self, T> {
+            let arg = vm.get_at_instr_ptr(1);
+            Ok(Self::AddRelativeBase((opcode, arg, arg1_mode, 1).into()))
+        }
+
+        #[inline]
         fn get_3_arg_modes(opcode: u16) -> Result<(ArgMode, ArgMode, ArgMode), VMError<T>> {
             let mut op = opcode / 100;
             let arg1 = (op % 10) as u8;
@@ -516,6 +555,7 @@ mod instr {
             match arg_mode {
                 0 => Ok(ArgMode::Positional),
                 1 => Ok(ArgMode::Immediate),
+                2 => Ok(ArgMode::Relative),
                 _ => Err(VMError::InvalidArgMode {
                     opcode,
                     arg_num,
