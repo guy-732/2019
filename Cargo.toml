@@ -11,6 +11,7 @@ aoc-runner = "0.3.0"
 aoc-runner-derive = "0.3.0"
 itertools = "0.12.0"
 fnv = "1.0.7"
+num = { workspace = true }
 
 [workspace]
 members = [
