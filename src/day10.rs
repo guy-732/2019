@@ -19,6 +19,14 @@ impl Pos {
         let gcd = self.0.gcd(&self.1);
         Self(self.0 / gcd, self.1 / gcd)
     }
+
+    #[inline]
+    fn get_angle(&self) -> f64 {
+        let x = self.0 as f64;
+        let y = self.1 as f64;
+
+        y.atan2(x)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -78,7 +86,7 @@ fn make_laser_hit_map(
             } else {
                 result.insert(
                     reduced_dist,
-                    iter::once((cmp::Reverse(gcd as usize), tile_pos)).collect()
+                    iter::once((cmp::Reverse(gcd as usize), tile_pos)).collect(),
                 );
             }
         }
@@ -116,7 +124,7 @@ fn part1(grid: &[Box<[Tile]>]) -> usize {
 }
 
 #[aoc(day10, part2)]
-fn part2(grid: &[Box<[Tile]>]) -> usize {
+fn part2(grid: &[Box<[Tile]>]) -> isize {
     let laser_pos = grid
         .iter()
         .enumerate()
@@ -138,8 +146,34 @@ fn part2(grid: &[Box<[Tile]>]) -> usize {
 
     let laser_hit = make_laser_hit_map(laser_pos, grid);
     // println!("{:#?}", laser_hit);
+    let mut laser_hit = laser_hit
+        .into_iter()
+        .map(|(key, list)| (key.get_angle(), list))
+        .collect_vec();
 
-    todo!()
+    laser_hit.sort_by(|a, b| f64::total_cmp(&b.0, &a.0));
+    // println!("{:#?}", laser_hit);
+
+    let mut count = 0;
+    let target_pos = 'outer: loop {
+        let count_at_start = count;
+        for (_angle, list) in laser_hit.iter_mut() {
+            if let Some(item) = list.pop() {
+                count += 1;
+
+                // println!("{}th item: {:?}", count, item.1);
+                if count == 200 {
+                    break 'outer item.1;
+                }
+            }
+        }
+
+        if count == count_at_start {
+            panic!("not enough elements (got {}, need at least 200)", count); // temp
+        }
+    };
+
+    target_pos.1 * 100 + target_pos.0
 }
 
 #[cfg(test)]
