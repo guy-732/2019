@@ -180,7 +180,10 @@ fn part2(input: &str) -> Result<i64, Box<dyn Error>> {
         loop {
             match decode_draw(&mut vm)? {
                 DecodeDraw::Success(pos, id) => {
-                    tiles.insert(pos, id);
+                    if is_terminal {
+                        tiles.insert(pos, id);
+                    }
+
                     if id == TileId::Ball {
                         last_ball_pos_x = pos.x;
                     } else if id == TileId::HorizontalPaddle {
