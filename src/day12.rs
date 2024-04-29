@@ -6,7 +6,8 @@ use std::{
     str::FromStr,
 };
 
-use itertools::Itertools;
+use itertools::{self, Itertools};
+use num::Integer;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct Vector3 {
@@ -205,10 +206,106 @@ impl From<Vector3> for Planet {
 }
 
 #[inline]
+fn are_x_equals(system: &[Planet], other: &[Planet]) -> bool {
+    for (a, b) in itertools::zip_eq(system, other) {
+        if a.position.x != b.position.x || a.velocity.x != b.velocity.x {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[inline]
+fn are_y_equals(system: &[Planet], other: &[Planet]) -> bool {
+    for (a, b) in itertools::zip_eq(system, other) {
+        if a.position.y != b.position.y || a.velocity.y != b.velocity.y {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[inline]
+fn are_z_equals(system: &[Planet], other: &[Planet]) -> bool {
+    for (a, b) in itertools::zip_eq(system, other) {
+        if a.position.z != b.position.z || a.velocity.z != b.velocity.z {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[inline]
+fn steps_until_reset_x(system: &[Planet]) -> u64 {
+    let mut simulation = system.to_vec();
+    for steps_executed in 1.. {
+        for i in 0..simulation.len() {
+            for j in (i + 1)..simulation.len() {
+                let (first, second) = simulation.split_at_mut(j);
+                first[i].speed_influence_x(&mut second[0]);
+            }
+        }
+
+        simulation.iter_mut().for_each(Planet::apply_velocity);
+
+        if are_x_equals(system, &simulation) {
+            return steps_executed;
+        }
+    }
+
+    unreachable!("for loop finished")
+}
+
+#[inline]
+fn steps_until_reset_y(system: &[Planet]) -> u64 {
+    let mut simulation = system.to_vec();
+    for steps_executed in 1.. {
+        for i in 0..simulation.len() {
+            for j in (i + 1)..simulation.len() {
+                let (first, second) = simulation.split_at_mut(j);
+                first[i].speed_influence_y(&mut second[0]);
+            }
+        }
+
+        simulation.iter_mut().for_each(Planet::apply_velocity);
+
+        if are_y_equals(system, &simulation) {
+            return steps_executed;
+        }
+    }
+
+    unreachable!("for loop finished")
+}
+
+#[inline]
+fn steps_until_reset_z(system: &[Planet]) -> u64 {
+    let mut simulation = system.to_vec();
+    for steps_executed in 1.. {
+        for i in 0..simulation.len() {
+            for j in (i + 1)..simulation.len() {
+                let (first, second) = simulation.split_at_mut(j);
+                first[i].speed_influence_z(&mut second[0]);
+            }
+        }
+
+        simulation.iter_mut().for_each(Planet::apply_velocity);
+
+        if are_z_equals(system, &simulation) {
+            return steps_executed;
+        }
+    }
+
+    unreachable!("for loop finished")
+}
+
+#[inline]
 fn parse_into_planets(input: &str) -> Result<Vec<Planet>, Box<dyn Error>> {
     input
         .lines()
-        .map(|line| Vector3::from_str(line))
+        .map(Vector3::from_str)
         .map_ok(|position| position.into())
         .collect()
 }
@@ -230,10 +327,26 @@ fn energy_after_steps(system: &mut [Planet], steps: usize) -> u64 {
     system.iter().map(Planet::total_energy).sum()
 }
 
+#[inline]
+fn steps_until_reset(system: &[Planet]) -> u64 {
+    let x_timer = steps_until_reset_x(system);
+    let y_timer = steps_until_reset_y(system);
+    let z_timer = steps_until_reset_z(system);
+
+    // println!("x: {x_timer}, y: {y_timer}, z: {z_timer}");
+
+    x_timer.lcm(&y_timer).lcm(&z_timer)
+}
+
 #[aoc(day12, part1)]
 fn part1(input: &str) -> Result<u64, Box<dyn Error>> {
     let mut planets = parse_into_planets(input)?;
     Ok(energy_after_steps(&mut planets, 1000))
+}
+
+#[aoc(day12, part2)]
+fn part2(input: &str) -> Result<u64, Box<dyn Error>> {
+    Ok(steps_until_reset(&parse_into_planets(input)?))
 }
 
 #[cfg(test)]
@@ -260,5 +373,15 @@ mod tests {
     fn part1_example2() {
         let mut planets = parse_into_planets(EXAMPLE2).unwrap();
         assert_eq!(energy_after_steps(&mut planets, 100), 1940);
+    }
+
+    #[test]
+    fn part2_example1() {
+        assert_eq!(part2(EXAMPLE1).unwrap(), 2772);
+    }
+
+    #[test]
+    fn part2_example2() {
+        assert_eq!(part2(EXAMPLE2).unwrap(), 4686774924);
     }
 }
